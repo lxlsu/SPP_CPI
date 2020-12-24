@@ -1,6 +1,7 @@
 """
+Does not contain fingerprint information
 
-finger information
+The doc2VEC feature of the protein were directly linked to the compound characteristics.
 """
 
 import torch.nn as nn
@@ -8,7 +9,6 @@ import torch
 from torch.autograd import Variable
 import torch.nn.functional as F
 from spp_layer import spatial_pyramid_pool
-
 
 if torch.cuda.is_available():
     device = torch.device("cuda")  # "cuda:0"
@@ -37,7 +37,7 @@ class ResidualBlock(nn.Module):
         super(ResidualBlock, self).__init__()
         self.conv1 = conv5x5(in_channels, out_channels, stride)
         self.bn1 = nn.BatchNorm2d(out_channels)
-        self.r_elu = nn.ELU(inplace=True)
+        self.elu = nn.ELU(inplace=True)
         self.conv2 = conv3x3(out_channels, out_channels)
         self.bn2 = nn.BatchNorm2d(out_channels)
         self.downsample = downsample
@@ -46,15 +46,13 @@ class ResidualBlock(nn.Module):
         residual = x
         out = self.conv1(x)
         out = self.bn1(out)
-        out = self.r_elu(out)
-
+        out = self.elu(out)
         out = self.conv2(out)
         out = self.bn2(out)
-
         if self.downsample:
             residual = self.downsample(x)
         out += residual
-        out = self.r_elu(out)
+        out = self.elu(out)
         return out
 
 
@@ -76,7 +74,7 @@ class SPP_CPI(torch.nn.Module):
         self.dim_pro = args['protein_fc']
         self.output_num = [4, 2, 1]
         self.spp_out_dim = args['spp_out_dim']
-        self.finger = args['finger']
+        self.finger = 0
         self.hidden_nodes = args['hidden_nodes']
 
         # self.blocks_num = [args['block_num1'], args['block_num2']]
@@ -90,12 +88,50 @@ class SPP_CPI(torch.nn.Module):
         # cnn
         self.conv = conv3x3(1, self.in_channels)
         self.bn = nn.BatchNorm2d(self.in_channels)
-        self.r_elu = nn.ELU(inplace=False)
+        self.elu = nn.ELU(inplace=False)
         self.layer1 = self.make_layer(block, args['cnn_channel_block1'], args['block_num1'])
         self.layer2 = self.make_layer(block, args['cnn_channel_block2'],  args['block_num2'])
-        # self.linear_final_step = torch.nn.Linear(self.lstm_hid_dim*2+args['d_a'],args['dense_hid'])
+
         self.linear_final_step = torch.nn.Linear(self.spp_out_dim + self.dim_pro + self.finger, args['fc_final'])
         self.linear_final = torch.nn.Linear(args['fc_final'], args['n_classes'])
+
+        # self.hidden_state = self.init_hidden()
+        # self.seq_hidden_state = self.init_hidden()
+
+        self.fc_protein_3 = nn.Sequential(
+            nn.Linear(args['protein_input_dim'], 512),
+            # nn.BatchNorm1d(256),   # 0425
+            nn.ReLU(inplace=True),
+
+            nn.Linear(512, 256),
+            # nn.BatchNorm1d(128, 64),
+            nn.ReLU(inplace=True),
+
+            nn.Linear(256, self.dim_pro)
+        )
+
+        self.fc_protein_2 = nn.Sequential(
+            nn.Linear(args['protein_input_dim'], 512),
+            # nn.BatchNorm1d(256),   # 0425
+            nn.Dropout(0.3),
+            nn.ReLU(inplace=True),
+
+            nn.Linear(512,  self.dim_pro),
+            nn.Dropout(0.3),
+            # nn.BatchNorm1d(128, 64),
+            nn.ReLU(inplace=True),
+        )
+
+        self.fc_compound = nn.Sequential(
+            nn.Linear(args['cnn_channel_block2'] * (1+4+16), self.hidden_nodes),
+            # nn.Dropout(p=0.2),
+            nn.ReLU(inplace=True),
+
+            nn.Linear(self.hidden_nodes, self.spp_out_dim),
+            # nn.Dropout(0.2),
+            nn.ReLU(inplace=True),
+        )
+
 
     def softmax(self, input, axis=1):
         """
@@ -116,7 +152,6 @@ class SPP_CPI(torch.nn.Module):
         return soft_max_nd.transpose(axis, len(input_size) - 1)
 
     def make_layer(self, block, out_channels, block_num, stride=1):
-
         downsample = None
         if (stride != 1) or (self.in_channels != out_channels):
             downsample = nn.Sequential(
@@ -129,30 +164,27 @@ class SPP_CPI(torch.nn.Module):
             layers.append(block(out_channels, out_channels))
         return nn.Sequential(*layers)
 
-    # x1 = smiles , x3= proteins
+    # x1 = smiles , x3 = proteins
     def forward(self, x1, finger, x3):
 
         protein = x3.view(x3.size(0), -1).to(device)
+        pt_feature = self.fc_protein_2(protein)
+        pt_feature = pt_feature.view(pt_feature.size(0), -1)  # batch_size*vec_len
 
-        # x1 = x1.type(torch.FloatTensor)
         x1 = torch.unsqueeze(x1, 1)
         pic = self.conv(x1)
-        # print(x1.shape, pic.shape)
+
         pic = self.bn(pic)
-        pic = self.r_elu(pic)
+        pic = self.elu(pic)
         pic = self.layer1(pic)
         pic = self.layer2(pic)
 
-        # print(pic.shape, "pic.shape")
-
         spp = spatial_pyramid_pool(pic, pic.size(0), [int(pic.size(2)), int(pic.size(3))], self.output_num)
-        # print(spp.shape, "spp.shape")
 
-        # print(spp.shape, "spp.shape")
         fc1 = F.relu(self.fc1(spp))
         fc2 = F.relu(self.fc2(fc1))
 
-        sscomplex = torch.cat([fc2, finger, protein], dim=1)
+        sscomplex = torch.cat([fc2, pt_feature], dim=1)
         sscomplex = torch.relu(self.linear_final_step(sscomplex))
 
         if not bool(self.type):

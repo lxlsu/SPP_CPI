@@ -1,8 +1,8 @@
 """
-finger information
+no finger information
 """
 
-from sppFingerModel import *
+from sppModel import *
 from sklearn import metrics
 import datetime
 from sppDatapre import *
@@ -17,23 +17,31 @@ def train(trainArgs):
     losses = []
     accs = []
     testResults = {}
+    # 保存下来，用于画图
     loss_total = []
     ISOTIMEFORMAT = '%Y_%m%d_%H%M'
 
     n_time_str = datetime.datetime.now().strftime(ISOTIMEFORMAT)
-    info = "spp_4_2_1" + "_p_" + str(p_input_dim) + "_" + str(doc2vec_epoch) + "_finger_" + str(finger_len) + "_in_" \
+    info = "spp_4_2_1_fc_protein_2_elu" + "_protein_" + str(p_input_dim) + "_" + str(doc2vec_epoch) + "_" \
+           + str(modelArgs['protein_fc']) + "_in_" \
            + str(modelArgs['in_channels']) + "_cnn_" + str(cnn_b1) + "_" + str(cnn_b2) \
            + "_layer_" + str(modelArgs['block_num1']) + "_" + str(modelArgs['block_num2']) \
-           + "_hidden_size_" + str(modelArgs['hidden_nodes']) \
-           + "_spp_out_" + str(modelArgs['spp_out_dim']) + "_fc_" + str(modelArgs['fc_final']) \
+           + "_spp_fc_" + str(modelArgs['hidden_nodes']) + "_" + str(modelArgs['spp_out_dim']) + "_combine_fc_" + str(modelArgs['fc_final']) \
            + "_lr_" + str(learning_rate)
-
-    test_result = "../data/" + DataName + "/result_finger/" + n_time_str + "_" + info + "_Test_" + DataName + ".txt"
-    dev_result = "../data/" + DataName + "/result_finger/" + n_time_str + "_" + info + "_Dev_" + DataName + ".txt"
+    print("时间", n_time_str)
+    print("参数", info)
+    if data_process_method == 'n':
+        result_file_name = "result_conv5_3_normal"
+    elif data_process_method == 's':
+        result_file_name = "result_conv5_3_standard"
+    else:
+        result_file_name = "result_conv5_3"
+    test_result = "../data/" + DataName + "/"+result_file_name + "/" + n_time_str + "_" + info + "_Test_" + DataName + ".txt"
+    dev_result = "../data/" + DataName + "/"+result_file_name + "/" + n_time_str + "_" + info + "_Dev_" + DataName + ".txt"
     train_loss = "../data/" + DataName + "/log/" + n_time_str + "_" + info + "_Train_loss" + DataName + ".log"
-    with open(test_result, "a+") as test_f:
+    with open(test_result, "a+") as test_f:   # 写入测试集数据
         test_f.write("testAuc, testPrecision, testRecall, testAcc, testLoss\n") #
-    with open(dev_result, "a+") as dev_f:
+    with open(dev_result, "a+") as dev_f:   # 写入测试集数据
         dev_f.write("devAuc, devPrecision, devRecall, devAcc, devLoss\n")
 
     for i in range(trainArgs['epochs']):
@@ -46,8 +54,6 @@ def train(trainArgs):
         criterion = trainArgs["criterion"]
         attention_model = trainArgs['model']
 
-        print("数据总数", len(train_loader))
-
         for batch_idx, (cmp_dm, finger, doc2vecProtein, y) in enumerate(train_loader):
 
             cmp_dm = cmp_dm.type(torch.FloatTensor)
@@ -59,12 +65,9 @@ def train(trainArgs):
 
             doc2vecProtein = create_variable(doc2vecProtein)
 
-            # print(contactmap.shape, "contactmap.shape")
-            y_pred = attention_model(cmp_dm, finger, doc2vecProtein)
-            # penalization AAT - I
 
-                # binary classification
-                # Adding a very small value to prevent BCELoss from outputting NaN's
+            y_pred = attention_model(cmp_dm, finger, doc2vecProtein)
+
             correct += torch.eq(torch.round(y_pred.type(torch.DoubleTensor).squeeze(1)),
                                     y.type(torch.DoubleTensor)).data.sum()
 
@@ -101,6 +104,8 @@ def train(trainArgs):
             testArgs['penal_coeff'] = trainArgs['penal_coeff']
             testArgs['clip'] = trainArgs['clip']
 
+            attention_model.eval()
+
             testResult = testPerProteinDataset72(testArgs)
             print(
                 "test [len(dev_loader) %d] [Epoch %d/%d] [AUC : %.3f] "
@@ -119,6 +124,7 @@ def train(trainArgs):
             with open(dev_result, "a+") as dev_f:
                 dev_f.write('\t'.join(map(str, devResult)) + '\n')
 
+        attention_model.train()
 
     return losses, accs, testResults
 
@@ -154,8 +160,7 @@ def test(testArgs):
     all_target = np.array([])
     with torch.no_grad():
         for batch_idx, (cmp_dm, finger, protein, y) in enumerate(test_loader):
-            # input, seq_lengths, y = make_variables(lines, properties, smiles_letters)
-            # attention_model.hidden_state = attention_model.init_hidden()
+
             cmp_dm = cmp_dm.type(torch.FloatTensor)
             cmp_dm = create_variable(cmp_dm)
 
@@ -166,8 +171,7 @@ def test(testArgs):
 
             y_pred = attention_model(cmp_dm, finger, protein)
             if not bool(attention_model.type):
-                # binary classification
-                # Adding a very small value to prevent BCELoss from outputting NaN's
+
                 pred = torch.round(y_pred.type(torch.DoubleTensor).squeeze(1))
                 correct += torch.eq(torch.round(y_pred.type(torch.DoubleTensor).squeeze(1)),
                                     y.type(torch.DoubleTensor)).data.sum()
@@ -184,8 +188,6 @@ def test(testArgs):
     testAuc = round(metrics.roc_auc_score(all_target, all_pred), 3)
     print("AUPR = ", metrics.average_precision_score(all_target, all_pred))
     testLoss = round(total_loss.item() / n_batches, 5)
-    # print("test size =", testSize, "  test acc =", testAcc, "  test recall =", testRecall, "  test precision =",
-    #       testPrecision, "  test auc =", testAuc, "  test loss = ", testLoss)
 
     return testAcc, testRecall, testPrecision, testAuc, testLoss
 
@@ -199,42 +201,41 @@ if __name__ == "__main__":
 
     print('train loader....')
 
-    DataName = "human"
+    DataName = "celegans"
     dataset_name = "dataset_filter_2"
     trainFoldPath = "../data/" + DataName + "/" + dataset_name
     TotalDataset = getTrainDataSet(trainFoldPath)
 
-    vector_len = 200
+    vector_len = 1024
     k_gram = 3
     w_dows = 4
-    doc2vec_epoch = 15
+    doc2vec_epoch = 7
     # 3_576_4_10"
     p_name = str(k_gram) + "_" + str(vector_len) + "_" + str(w_dows) + "_" + str(doc2vec_epoch)
 
     protein_file_path = "../data/" + DataName + "/" + \
                         dataset_name + "_proteins_doc2vec_" + p_name
-    trian_proteinDataset = load_tensor(protein_file_path, torch.FloatTensor)    # 蛋白质特征
+    trian_proteinDataset = load_tensor(protein_file_path, torch.FloatTensor)
 
     smiles_file_path = trainFoldPath + "_smiles"
 
-    matrix_tensor = load_tensor(smiles_file_path, torch.FloatTensor)  # 加载距离矩阵， 化合物特征。
+    matrix_tensor = load_tensor(smiles_file_path, torch.FloatTensor)
 
     b_size = 1
-    finger_len = 50
+    finger_len = 34
     data_process_method = 'n'
 
     total_dataset = ProDataset(dataSet=TotalDataset, matrix=matrix_tensor, proteins=trian_proteinDataset,
                                bits=finger_len, method=data_process_method)
     # train_loader = DataLoader(dataset=total_dataset, batch_size=1, shuffle=True, drop_last=True)
 
-    # 划分数据集
     train_size = int(0.8 * len(total_dataset))
     other_size = len(total_dataset) - train_size
-    # 训练数据集
+
     train_dataset, other_dataset = torch.utils.data.random_split(total_dataset, [train_size, other_size])
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=b_size, shuffle=True)
-    # 验证数据集， 测试数据集
-    test_size = int(0.5 * other_size)
+
+    test_size = int(0.5*other_size)
     dev_size = other_size - test_size
     dev_dataset, test_dataset = torch.utils.data.random_split(other_dataset, [dev_size, test_size])
 
@@ -246,22 +247,21 @@ if __name__ == "__main__":
     modelArgs = {}
     modelArgs['batch_size'] = 1
     modelArgs['protein_input_dim'] = vector_len
-    modelArgs['protein_fc'] = vector_len
-    modelArgs['finger'] = finger_len
+    modelArgs['protein_fc'] = 36
     modelArgs['d_a'] = 32
     # d_a = modelArgs['d_a']
-    modelArgs['in_channels'] = 64
+    modelArgs['in_channels'] = 32
     modelArgs['cnn_channel_block1'] = 128
     modelArgs['cnn_channel_block2'] = 128
     cnn_b1 = modelArgs['cnn_channel_block1']
     cnn_b2 = modelArgs['cnn_channel_block2']
-    modelArgs['block_num1'] = 4       # resual block， CNN
-    modelArgs['block_num2'] = 4
+    modelArgs['block_num1'] = 16
+    modelArgs['block_num2'] = 16
 
     modelArgs['r'] = 20
-    modelArgs['cnn_layers'] = 4
+    # modelArgs['cnn_layers'] = 4
     modelArgs['hidden_nodes'] = 256
-    modelArgs['spp_out_dim'] = 100
+    modelArgs['spp_out_dim'] = 64
     modelArgs['fc_final'] = 100
 
     p_input_dim = modelArgs['protein_input_dim']
@@ -272,17 +272,24 @@ if __name__ == "__main__":
 
     trainArgs = {}
     trainArgs['model'] = SPP_CPI(modelArgs, block=ResidualBlock).to(device)
-    trainArgs['epochs'] = 35
+    trainArgs['epochs'] = 30
     trainArgs['lr'] = 0.0001
     learning_rate = trainArgs['lr']
+    trainArgs['weight_decay'] = 1e-4
     trainArgs['train_loader'] = train_loader
     trainArgs['doTest'] = True
     trainArgs['use_regularizer'] = False
     trainArgs['penal_coeff'] = 0.03
     trainArgs['clip'] = True
     trainArgs['criterion'] = torch.nn.BCELoss()
-    trainArgs['optimizer'] = torch.optim.Adam(trainArgs['model'].parameters(), lr=trainArgs['lr'])
+
+    trainArgs['optimizer'] = torch.optim.Adam(trainArgs['model'].parameters(),
+                                              lr=trainArgs['lr'])
     trainArgs['doSave'] = True
     print('train args over...')
 
     losses, accs, testResults = train(trainArgs)
+
+"""
+
+"""

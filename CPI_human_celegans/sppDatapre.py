@@ -3,7 +3,6 @@ import torch.nn as nn
 import sys
 import pickle
 
-sys.path.append("../code/")
 from utils import *
 
 # torch.cuda.set_device(1)
@@ -21,12 +20,7 @@ def normalization(data):
 def standardization(data):
     mu = np.mean(data, axis=0)
     sigma = np.std(data, axis=0)
-    # print(data.shape, sigma)
-    # [[0.         2.75400045]
-    #  [2.75400045 0.        ]]
-    # if data.shape[0] == 2:
 
-    #     print(data)
     return (data - mu) / sigma
 
 
@@ -52,18 +46,7 @@ class ProDataset(Dataset):
         protein = self.proteins[index]
         dm = self.matrix[index]
         mol = Chem.MolFromSmiles(smiles)
-        """
-        # 3d距离
-        mol = Chem.MolFromSmiles(smiles)
 
-        # bm = molDG.GetMoleculeBoundsMatrix(mol)
-        mol = Chem.AddHs(mol)  # 加氢
-        AllChem.EmbedMolecule(mol, randomSeed=1)  # 通过距离几何算法计算3D坐标
-        dm = AllChem.Get3DDistanceMatrix(mol)
-        atom_nums = mol.GetNumAtoms()  # 原子数
-        if self.padding and atom_nums <= 3:
-            dm = np.pad(dm, 2, 'constant')
-        """
         dm = dm.numpy()
 
         # 数据标准化, 添加于19：22
@@ -124,25 +107,14 @@ class ProDataset_cmp_2018(Dataset):
 
     def __getitem__(self, index):
         smiles, seq, label = self.dataSet[index]
-        # contactMap = self.dict[seq]     # 为tensor
+        # contactMap = self.dict[seq]
         protein = self.proteins[index]
         dm = self.compound[index]
         mol = Chem.MolFromSmiles(smiles)
-        """
-        # 3d距离
-        mol = Chem.MolFromSmiles(smiles)
 
-        # bm = molDG.GetMoleculeBoundsMatrix(mol)
-        mol = Chem.AddHs(mol)  # 加氢
-        AllChem.EmbedMolecule(mol, randomSeed=1)  # 通过距离几何算法计算3D坐标
-        dm = AllChem.Get3DDistanceMatrix(mol)
-        atom_nums = mol.GetNumAtoms()  # 原子数
-        if self.padding and atom_nums <= 3:
-            dm = np.pad(dm, 2, 'constant')
-        """
         dm = dm.numpy()
 
-        # 数据标准化, 添加于19：22
+
         if self.method == 'n':
             dm = normalization(dm)
         elif self.method == 's':
@@ -150,9 +122,8 @@ class ProDataset_cmp_2018(Dataset):
         else:
             dm = dm
 
-        # 指纹信息
         #  m = Chem.MolFromSmiles(s)
-        finger_info = np.array(AllChem.GetMorganFingerprintAsBitVect(mol, 2, nBits=self.bits))  # 分子指纹
+        finger_info = np.array(AllChem.GetMorganFingerprintAsBitVect(mol, 2, nBits=self.bits))
 
         return dm, finger_info, protein, int(label)
 
