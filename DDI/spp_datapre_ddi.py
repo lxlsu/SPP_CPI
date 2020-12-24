@@ -44,29 +44,13 @@ class ProDataset(Dataset):
     def __init__(self,dataSet, druga, drugb):
         self.dataSet = dataSet    # list:[[smile,seq,label],....]
         self.len = len(dataSet)
-        # self.dict = seqContactDict  # dict:{seq:contactMap,....}
-        # self.properties = [int(x[2]) for x in dataSet]# labels
-        # self.property_list = list(sorted(set(self.properties)))
-        # self.proteins = proteins
+
         self.drugA = druga
         self.drugB = drugb
 
     def __getitem__(self, index):
         _, _, label = self.dataSet[index]
-        # contactMap = self.dict[seq]     # 为tensor
-        # protein = self.proteins[index]
-        # 3d距离
-        """
-        mol_drug1 = Chem.MolFromSmiles(drug1)
-        mol_drug1 = Chem.AddHs(mol_drug1) # 加氢
-        AllChem.EmbedMolecule(mol_drug1,  randomSeed=1)  # 通过距离几何算法计算3D坐标
-        dm_drug1 = AllChem.Get3DDistanceMatrix(mol_drug1)
 
-        mol_drug2 = Chem.MolFromSmiles(drug2)
-        mol_drug2 = Chem.AddHs(mol_drug2)   # 加氢
-        AllChem.EmbedMolecule(mol_drug2,  randomSeed=1)  # 通过距离几何算法计算3D坐标
-        dm_drug2 = AllChem.Get3DDistanceMatrix(mol_drug2)
-        """
         dm_drug1 = self.drugA[index]
         dm_drug2 = self.drugB[index]
 

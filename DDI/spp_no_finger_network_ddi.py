@@ -30,7 +30,6 @@ def train(trainArgs):
     losses = []
     accs = []
     testResults = {}
-    # 保存下来，用于画图
     loss_total = []
     ISOTIMEFORMAT = '%Y_%m%d_%H%M'
     n_time_str = datetime.datetime.now().strftime(ISOTIMEFORMAT)
@@ -42,7 +41,7 @@ def train(trainArgs):
 
     test_result = "../data/BIOSNAP/result/" + n_time_str + info + "_Test_" + foldName + ".txt"
     train_loss = "../data/BIOSNAP/log/" + n_time_str + info + "_Train_loss" + foldName + ".log"
-    with open(test_result, "a+") as t_f:   # 写入测试集数据
+    with open(test_result, "a+") as t_f:
         t_f.write("testAcc, testAuc, testPrecision, testPAuc, testPRAUC, testRecall, testF1, testLoss\n")
     for i in range(trainArgs['epochs']):
         print("Running EPOCH", i + 1)
@@ -55,19 +54,18 @@ def train(trainArgs):
         attention_model = trainArgs['model']
         if os.path.exists(model_path):
             attention_model.load_state_dict(torch.load(model_path))
-        print("数据总数", len(train_loader))
 
         for batch_idx, (lines, contactmap, y) in enumerate(train_loader):
             # input, seq_lengths, y = make_variables(lines, properties, smiles_letters)
             # attention_model.hidden_state = attention_model.init_hidden()
-            lines = lines.type(torch.FloatTensor)   # 类型
+            lines = lines.type(torch.FloatTensor)
             lines = lines.to(device)
             # print(lines.shape, "lines.shape")
-            contactmap = contactmap.type(torch.FloatTensor)  # 类型
+            contactmap = contactmap.type(torch.FloatTensor)
             contactmap = contactmap.to(device)
             # print(contactmap.shape, "contactmap.shape")
 
-            y_pred = attention_model(lines, contactmap)  # 输出结果,输入化合物3d距离，蛋白质doc2vec
+            y_pred = attention_model(lines, contactmap)
             # penalization AAT - I
             """
             if trainArgs['use_regularizer']:
@@ -78,7 +76,7 @@ def train(trainArgs):
 
                 penal = attention_model.l2_matrix_norm(att @ attT - identity)
             """
-            # 二分类
+
                 # binary classification
                 # Adding a very small value to prevent BCELoss from outputting NaN's
             correct += torch.eq(torch.round(y_pred.type(torch.DoubleTensor).squeeze(1)),
@@ -151,8 +149,8 @@ def getROCE(predList, targetList, roceRate):
     :param roceRate:
     :return:
     """
-    p = sum(targetList)  # 正样本数
-    n = len(targetList) - p  # 负样本数
+    p = sum(targetList)
+    n = len(targetList) - p
     predList = [[index, x] for index, x in enumerate(predList)]
     predList = sorted(predList, key=lambda x: x[1], reverse=True)
     tp1 = 0
@@ -179,8 +177,8 @@ def testPerProteinDataset72(testArgs, path_name, fileName):
     drugB_test_file_path = filePath + "_drugB"
     # test_protein_file = testDataPath + fileName + "_protein_seq_proteins_doc2vec_3_512_4_7"
     # test_protein_file = testDataPath + fileName + "_protein_seq_proteins_doc2vec_3_512_4_7"
-    d_a = load_tensor(drugA_test_file_path, torch.FloatTensor)   # 加载距离矩阵。
-    d_b = load_tensor(drugB_test_file_path, torch.FloatTensor)   # 加载距离矩阵。
+    d_a = load_tensor(drugA_test_file_path, torch.FloatTensor)
+    d_b = load_tensor(drugB_test_file_path, torch.FloatTensor)
 
     testDataSet = getTrainDataSet(filePath)    # [smile, protein, label]
     # test_protein = load_tensor(test_protein_file, torch.FloatTensor)
@@ -292,10 +290,10 @@ if __name__ == "__main__":
     modelArgs = {}
     modelArgs['batch_size'] = 1
     # modelArgs['protein_input_dim'] = 512
-    # modelArgs['protein_fc'] = 32        # 蛋白质全连接层的输出维度
+    # modelArgs['protein_fc'] = 32
     # modelArgs['d_a'] = 32
     # d_a = modelArgs['d_a']
-    modelArgs['in_channels'] = 32  # 从原来的8改为16
+    modelArgs['in_channels'] = 32
     modelArgs['cnn_channels'] = 128
     cnn_channels = modelArgs['cnn_channels']
     # modelArgs['r'] = 20
@@ -304,7 +302,7 @@ if __name__ == "__main__":
     modelArgs['fc_final'] = 64       # = modelArgs['cnn_channels']+ modelArgs['protein_fc']
 
     # p_input_dim = modelArgs['protein_input_dim']
-    modelArgs['task_type'] = 0  # 0表示二分类，1表示多酚类
+    modelArgs['task_type'] = 0
     modelArgs['n_classes'] = 1
 
     print('train args...')
@@ -328,7 +326,7 @@ if __name__ == "__main__":
                                               lr=trainArgs['lr'], weight_decay=trainArgs['weight_decay'])
     trainArgs['doSave'] = True
     # d_name = "test_dataset_30_fold1"        #
-    trainArgs['d_name'] = "testDataset30Fold3"    # 多余
+    trainArgs['d_name'] = "testDataset30Fold3"
     # trainArgs['testDataset'] = "New File"  # d_name + "_filter"
     trainArgs['testDataset'] = trainArgs['d_name'] + "_filter"
 

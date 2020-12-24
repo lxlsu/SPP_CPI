@@ -110,13 +110,9 @@ class DrugVQA(torch.nn.Module):
         self.layer1_drug2 = self.make_layer(block, args['cnn_channels'], args['cnn_layers'])
         self.layer2_drug2 = self.make_layer(block, args['cnn_channels'], args['cnn_layers'])
 
-
-        # self.linear_final_step = torch.nn.Linear(self.lstm_hid_dim*2+args['d_a'],args['fc_final'])
         self.linear_final_step = torch.nn.Linear(self.spp_out_dim*2 + self.finger_len, args['fc_final'])
         self.linear_final = torch.nn.Linear(args['fc_final'], args['n_classes'])
 
-        # self.hidden_state = self.init_hidden()
-        # self.seq_hidden_state = self.init_hidden()
 
     def softmax(self, input, axis=1):
         """
@@ -149,21 +145,9 @@ class DrugVQA(torch.nn.Module):
             layers.append(block(out_channels, out_channels))
         return nn.Sequential(*layers)
 
-    # x1 = smiles , x2 = contactMap
+    # x1 = smiles , x2 = smiles
     def forward(self, x1, x2):
-        """
-        smile_embed = self.embeddings(x1)
-        outputs, self.hidden_state = self.lstm(smile_embed,self.hidden_state)
-        sentence_att = F.tanh(self.linear_first(outputs))
-        sentence_att = self.linear_second(sentence_att)
-        sentence_att = self.softmax(sentence_att,1)
-        sentence_att = sentence_att.transpose(1,2)
-        sentence_embed = sentence_att@outputs
-        avg_sentence_embed = torch.sum(sentence_embed,1)/self.r  #multi head
-        """
 
-        # print(x1.shape, "初始维度", x1.dtype)
-        # x1 = x1.type(torch.FloatTensor)
         x1 = torch.unsqueeze(x1, 1)
         drug1 = self.conv_drug1(x1)
         # print(x1.shape, pic.shape)
@@ -198,44 +182,8 @@ class DrugVQA(torch.nn.Module):
         sscomplex = torch.cat([fc2_drug1, fc2_drug2], dim=1)
         sscomplex = torch.relu(self.linear_final_step(sscomplex))
 
-        # 二分类用 F.sigmoid， 多分类用F.log_softmax
         if not bool(self.type):
             pred = self.linear_final(sscomplex)
             pic_output = torch.sigmoid(pred)
             return pic_output
-
-        # return output
-        """
-        pic_emb = torch.mean(pic, 2)
-        pic_emb = pic_emb.permute(0, 2, 1)
-        # print("pic_emb, permute,", pic_emb.shape)
-        seq_att = torch.tanh(self.linear_first_seq(pic_emb))
-        # print("pic_emb, permute,", seq_att.shape)
-        # pic_emb, permute, torch.Size([1, 553, 32])
-        # pic_emb, permute, torch.Size([1, 553, 32])
-        seq_att = self.linear_second_seq(seq_att)
-
-        seq_att = self.softmax(seq_att, 1)
-        seq_att = seq_att.transpose(1, 2)
-
-        seq_embed = seq_att @ pic_emb  # @???什么意思。, 乘法。
-        # print(seq_att.shape, pic_emb.shape, seq_embed.shape, "运算")
-        # torch.Size([1, 10, 553]) torch.Size([1, 553, 32]) torch.Size([1, 10, 32])
-        # self.r=10
-        avg_seq_embed = torch.sum(seq_embed, 1) / self.r
-        # print("avg_sentence_embed,avg_seq_embed", seq_att.shape, seq_embed.shape, avg_seq_embed.shape)
-        # avg_sentence_embed,avg_seq_embed torch.Size([1, 128]) torch.Size([1, 32])
-        # print(avg_seq_embed.shape, pt_feature.shape, "化合物，蛋白质")
-        sscomplex = torch.cat([avg_seq_embed, finger, pt_feature], dim=1)
-        sscomplex = torch.relu(self.linear_final_step(sscomplex))
-
-                # 二分类用 F.sigmoid， 多分类用F.log_softmax
-        if not bool(self.type):
-            pred = self.linear_final(sscomplex)
-            output = torch.sigmoid(pred)
-            return output
-        else:
-            return F.log_softmax(self.linear_final(sscomplex))
-        """
-
 
